@@ -2,42 +2,49 @@ using System.Collections.Generic;
 using UnityEngine;
 using Matrix4x4 = UnityEngine.Matrix4x4;
 using Quaternion = UnityEngine.Quaternion;
-using Random = UnityEngine.Random;
 using Vector3 = UnityEngine.Vector3;
 
 public class EnhancedMeshGenerator : MonoBehaviour
 {
-    public Material material;
+    [Header("Materials")]
+    public Material playerMaterial;
+    public Material enemyMaterial;
+    public Material obstacleMaterial;
+    public Material fireballMaterial;
+
+    [Header("Settings")]
     public int instanceCount = 100;
-
-    private Mesh cubeMesh;
-    private List<Matrix4x4> matrices = new List<Matrix4x4>();
-    private List<int> colliderIds = new List<int>();
-
     public float width = 1f;
     public float height = 1f;
     public float depth = 1f;
-
     public float movementSpeed = 6f;
     public float jumpForce = 12f;
     public float gravity = 20f;
     public float fallMultiplier = 2.5f;
     public float airControl = 0.5f;
 
+    private Mesh cubeMesh;
+
+    private List<Matrix4x4> playerMatrices = new List<Matrix4x4>();
+    private List<Matrix4x4> enemyMatrices = new List<Matrix4x4>();
+    private List<Matrix4x4> obstacleMatrices = new List<Matrix4x4>();
+    private List<Matrix4x4> fireballMatrices = new List<Matrix4x4>();
+
+    private List<int> playerColliderIds = new List<int>();
+    private List<int> enemyColliderIds = new List<int>();
+    private List<int> obstacleColliderIds = new List<int>();
+
     private int playerID = -1;
     private Vector3 playerVelocity = Vector3.zero;
     private bool isGrounded = false;
 
     public PlayerCameraFollow cameraFollow;
-
     public float constantZPosition = 0f;
 
     public float minX = -50f, maxX = 50f;
     public float minY = -10f, maxY = 20f;
-
     public float groundY = -10f;
 
-    // SYSTEMS
     private HashSet<int> enemyIDs = new HashSet<int>();
     private HashSet<int> killZones = new HashSet<int>();
     private int goalID;
@@ -74,11 +81,10 @@ public class EnhancedMeshGenerator : MonoBehaviour
     void CreatePlayer()
     {
         Vector3 pos = new Vector3(0, 5, constantZPosition);
-
         playerID = CollisionManager.Instance.RegisterCollider(pos, Vector3.one, true);
 
-        matrices.Add(Matrix4x4.TRS(pos, Quaternion.identity, Vector3.one));
-        colliderIds.Add(playerID);
+        playerMatrices.Add(Matrix4x4.TRS(pos, Quaternion.identity, Vector3.one));
+        playerColliderIds.Add(playerID);
     }
 
     void CreateGround()
@@ -88,8 +94,8 @@ public class EnhancedMeshGenerator : MonoBehaviour
 
         int id = CollisionManager.Instance.RegisterCollider(pos, scale, false);
 
-        matrices.Add(Matrix4x4.TRS(pos, Quaternion.identity, scale));
-        colliderIds.Add(id);
+        obstacleMatrices.Add(Matrix4x4.TRS(pos, Quaternion.identity, scale));
+        obstacleColliderIds.Add(id);
     }
 
     void GenerateWorld()
@@ -101,14 +107,31 @@ public class EnhancedMeshGenerator : MonoBehaviour
 
             int id = CollisionManager.Instance.RegisterCollider(pos, scale, false);
 
-            matrices.Add(Matrix4x4.TRS(pos, Quaternion.identity, scale));
-            colliderIds.Add(id);
-
             float r = Random.value;
 
-            if (r > 0.85f) enemyIDs.Add(id);
-            else if (r > 0.7f) killZones.Add(id);
-            else if (r > 0.98f) goalID = id;
+            if (r > 0.85f)
+            {
+                enemyIDs.Add(id);
+                enemyMatrices.Add(Matrix4x4.TRS(pos, Quaternion.identity, scale));
+                enemyColliderIds.Add(id);
+            }
+            else if (r > 0.7f)
+            {
+                killZones.Add(id);
+                obstacleMatrices.Add(Matrix4x4.TRS(pos, Quaternion.identity, scale));
+                obstacleColliderIds.Add(id);
+            }
+            else if (r > 0.98f)
+            {
+                goalID = id;
+                obstacleMatrices.Add(Matrix4x4.TRS(pos, Quaternion.identity, scale));
+                obstacleColliderIds.Add(id);
+            }
+            else
+            {
+                obstacleMatrices.Add(Matrix4x4.TRS(pos, Quaternion.identity, scale));
+                obstacleColliderIds.Add(id);
+            }
         }
     }
 
@@ -122,19 +145,16 @@ public class EnhancedMeshGenerator : MonoBehaviour
 
     void UpdatePlayer()
     {
-        int index = colliderIds.IndexOf(playerID);
-
-        Matrix4x4 m = matrices[index];
+        int index = playerColliderIds.IndexOf(playerID);
+        Matrix4x4 m = playerMatrices[index];
         Vector3 pos = m.GetPosition();
 
-        // Jump
         if (Input.GetKeyDown(KeyCode.Space) && isGrounded)
         {
             playerVelocity.y = jumpForce;
             isGrounded = false;
         }
 
-        // Gravity
         if (playerVelocity.y < 0)
             playerVelocity.y -= gravity * fallMultiplier * Time.deltaTime;
         else
@@ -146,16 +166,21 @@ public class EnhancedMeshGenerator : MonoBehaviour
         pos.x += h * speed * Time.deltaTime;
         pos.y += playerVelocity.y * Time.deltaTime;
 
-        // Collision
         if (CollisionManager.Instance.CheckCollision(playerID, pos, out List<int> hits))
         {
             foreach (int hit in hits)
             {
                 if (enemyIDs.Contains(hit) && !isInvincible)
+                {
+                    Debug.Log($"Player touched by enemy! HP before damage: {hp}");
                     TakeDamage(1);
+                }
 
                 if (killZones.Contains(hit))
+                {
                     hp = 0;
+                    Debug.Log("Player touched kill zone! DEAD");
+                }
 
                 if (hit == goalID)
                 {
@@ -170,13 +195,10 @@ public class EnhancedMeshGenerator : MonoBehaviour
             playerVelocity.y = 0;
         }
         else
-        {
             isGrounded = false;
-        }
 
-        matrices[index] = Matrix4x4.TRS(pos, Quaternion.identity, Vector3.one);
+        playerMatrices[index] = Matrix4x4.TRS(pos, Quaternion.identity, Vector3.one);
         CollisionManager.Instance.UpdateCollider(playerID, pos, Vector3.one);
-
         cameraFollow.SetPlayerPosition(pos);
 
         if (Input.GetKeyDown(KeyCode.F))
@@ -185,15 +207,15 @@ public class EnhancedMeshGenerator : MonoBehaviour
 
     void UpdateEnemies()
     {
-        foreach (int id in enemyIDs)
+        for (int i = 0; i < enemyIDs.Count; i++)
         {
-            int i = colliderIds.IndexOf(id);
-            Matrix4x4 m = matrices[i];
-
+            int id = enemyColliderIds[i];
+            Matrix4x4 m = enemyMatrices[i];
             Vector3 pos = m.GetPosition();
+
             pos.x += Mathf.Sin(Time.time + id) * Time.deltaTime * 3f;
 
-            matrices[i] = Matrix4x4.TRS(pos, Quaternion.identity, Vector3.one);
+            enemyMatrices[i] = Matrix4x4.TRS(pos, Quaternion.identity, Vector3.one);
             CollisionManager.Instance.UpdateCollider(id, pos, Vector3.one);
         }
     }
@@ -204,15 +226,28 @@ public class EnhancedMeshGenerator : MonoBehaviour
         {
             fireballs[i] += Vector3.right * 15f * Time.deltaTime;
 
-            foreach (int enemy in enemyIDs)
+            foreach (int enemy in new List<int>(enemyIDs))
             {
                 if (CollisionManager.Instance.CheckCollision(enemy, fireballs[i], out _))
                 {
+                    Debug.Log($"Enemy {enemy} killed by fireball at position {fireballs[i]}");
+
                     enemyIDs.Remove(enemy);
+                    int idx = enemyColliderIds.IndexOf(enemy);
+                    if (idx >= 0)
+                    {
+                        enemyColliderIds.RemoveAt(idx);
+                        enemyMatrices.RemoveAt(idx);
+                    }
+
                     break;
                 }
             }
         }
+
+        fireballMatrices.Clear();
+        foreach (var f in fireballs)
+            fireballMatrices.Add(Matrix4x4.TRS(f, Quaternion.identity, Vector3.one));
     }
 
     void TakeDamage(int dmg)
@@ -221,34 +256,21 @@ public class EnhancedMeshGenerator : MonoBehaviour
 
         hp -= dmg;
         isInvincible = true;
-
         Invoke(nameof(ResetInv), 2f);
 
+        Debug.Log($"Player took {dmg} damage. Remaining HP: {hp}");
+
         if (hp <= 0)
-            Debug.Log("DEAD");
+            Debug.Log("Player DEAD");
     }
 
     void ResetInv() => isInvincible = false;
 
     void Render()
     {
-        Camera cam = Camera.main;
-
-        List<Matrix4x4> visible = new List<Matrix4x4>();
-
-        foreach (var m in matrices)
-        {
-            Vector3 pos = m.GetPosition();
-            Vector3 dir = (pos - cam.transform.position).normalized;
-
-            if (Vector3.Dot(cam.transform.forward, dir) > 0)
-                visible.Add(m);
-        }
-
-        for (int i = 0; i < visible.Count; i += 1023)
-        {
-            int count = Mathf.Min(1023, visible.Count - i);
-            Graphics.DrawMeshInstanced(cubeMesh, 0, material, visible.GetRange(i, count));
-        }
+        Graphics.DrawMeshInstanced(cubeMesh, 0, playerMaterial, playerMatrices);
+        Graphics.DrawMeshInstanced(cubeMesh, 0, enemyMaterial, enemyMatrices);
+        Graphics.DrawMeshInstanced(cubeMesh, 0, obstacleMaterial, obstacleMatrices);
+        Graphics.DrawMeshInstanced(cubeMesh, 0, fireballMaterial, fireballMatrices);
     }
 }

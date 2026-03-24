@@ -944,7 +944,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3153005c4297bcd4ba3ac8bbaa0f789d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::EnhancedMeshGenerator
-  material: {fileID: 2100000, guid: b15834a0a43ff3a469f071fd1c875cb0, type: 2}
+  playerMaterial: {fileID: 2100000, guid: b15834a0a43ff3a469f071fd1c875cb0, type: 2}
+  enemyMaterial: {fileID: 2100000, guid: 99fd4eec148d24f43b58331b631d8a4e, type: 2}
+  obstacleMaterial: {fileID: 2100000, guid: bf780942a122d5c4b975056b83549a03, type: 2}
+  fireballMaterial: {fileID: 2100000, guid: 0531a6d75751e8e4e89a0b8a6f4d6442, type: 2}
   instanceCount: 100
   width: 1
   height: 1
